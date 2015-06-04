@@ -147,7 +147,7 @@ class Gcat:
 
 
 if __name__ == '__main__':
-    parser = argparse.ArgumentParser(description="Gcat-NG", version='0.0.1')
+    parser = argparse.ArgumentParser(description="Gcat", version='0.0.1')
     parser.add_argument("-l", dest="list", action="store_true", help="List available clients")
     parser.add_argument("--id", dest='id', default='ALL', type=str, help="Client to target")
     parser.add_argument('--job-id', dest='jobid', type=str, help='Job id to retrieve')
