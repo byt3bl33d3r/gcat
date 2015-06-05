@@ -1,4 +1,4 @@
-GCAT-NG
-=======
+Gcat
+====
 
 Work in progress...

