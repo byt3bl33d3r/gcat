@@ -61,7 +61,7 @@ Here we are telling ```90b2cd83-cb36-52de-84ee-99db6ff41a11``` to execute ```ipc
 ```
 #~ python gcat.py -id 90b2cd83-cb36-52de-84ee-99db6ff41a11 -jobid SH3C4gv     
 DATE: 'Tue, 09 Jun 2015 06:51:44 -0700 (PDT)'
-JOBID: aw6YHjX
+JOBID: SH3C4gv
 FG WINDOW: 'Command Prompt - C:\Python27\python.exe implant.py'
 CMD: 'ipconfig /all'
 
