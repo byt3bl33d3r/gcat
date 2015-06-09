@@ -84,3 +84,4 @@ To Do
 
 - Multi-platform support
 - Command to upload files
+- Transport crypto & obfuscation
