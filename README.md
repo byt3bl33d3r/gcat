@@ -14,6 +14,8 @@ This repo contains two files:
 
 In both files, edit the ```gmail_user``` and ```gmail_pwd``` variables with the username and password of the account you previously setup.
 
+You're probably going to want to compile ```implant.py``` into an executable using [Pyinstaller](https://github.com/pyinstaller/pyinstaller)
+
 Usage
 =====
 ```
