@@ -49,7 +49,7 @@ server_port = 587
 #logging.basicConfig(level=log_level, format="%(asctime)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")
 
 #generates a unique uuid 
-uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, os.environ['USERNAME']))
+uniqueid = str(uuid.uuid5(uuid.NAMESPACE_OID, str(uuid.getnode())))
 
 def genRandomString(slen=10):
     return ''.join(random.sample(string.ascii_letters + string.digits, slen))
