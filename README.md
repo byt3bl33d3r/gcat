@@ -7,6 +7,7 @@ Setup
 For this to work you need:
 - A Gmail account (**Use a dedicated account! Do not use your personal one!**)
 - Turn on "Allow less secure apps" under the security settings of the account
+- You may also have to enable IMAP in the account settings
 
 This repo contains two files:
 - ```gcat.py``` a script that's used to enumerate and issue commands to available clients
@@ -15,6 +16,7 @@ This repo contains two files:
 In both files, edit the ```gmail_user``` and ```gmail_pwd``` variables with the username and password of the account you previously setup.
 
 You're probably going to want to compile ```implant.py``` into an executable using [Pyinstaller](https://github.com/pyinstaller/pyinstaller)
+**It's reccomended you compile implant.py using a 32bit Python installation**
 
 Usage
 =====
