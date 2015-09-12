@@ -22,7 +22,34 @@ You're probably going to want to compile ```implant.py``` into an executable usi
 Usage
 =====
 ```
-Gcat
+                                             dP   
+                                             88   
+                .d8888b. .d8888b. .d8888b. d8888P 
+                88'  `88 88'  `"" 88'  `88   88   
+                88.  .88 88.  ... 88.  .88   88   
+                `8888P88 `88888P' `88888P8   dP   
+                     .88                          
+                 d8888P  
+                     
+
+                   .__....._             _.....__,
+                     .": o :':         ;': o :".
+                     `. `-' .'.       .'. `-' .'   
+                       `---'             `---'  
+
+             _...----...      ...   ...      ...----..._
+          .-'__..-''----    `.  `"`  .'    ----'''-..__`-.
+         '.-'   _.--'''       `-._.-'       ''''--._   `-.`
+         '  .-"'                  :                  `"-.  `
+           '   `.              _.'"'._              .'   `
+                 `.       ,.-'"       "'-.,       .'
+                   `.                           .'
+              jgs    `-._                   _.-'
+                         `"'--...___...--'"`
+
+                     ...IM IN YUR COMPUTERZ...
+
+                        WATCHIN YUR SCREENZ
 
 optional arguments:
   -h, --help            show this help message and exit
@@ -38,12 +65,16 @@ Commands:
 
   -cmd CMD              Execute a system command
   -download PATH        Download a file from a clients system
+  -upload SRC DST       Upload a file to the clients system
   -exec-shellcode FILE  Execute supplied shellcode on a client
   -screenshot           Take a screenshot
   -lock-screen          Lock the clients screen
   -force-checkin        Force a check in
   -start-keylogger      Start keylogger
   -stop-keylogger       Stop keylogger
+
+Meow!
+
 ```
 
 - Once you've deployed the backdoor on a couple of systems, you can check available clients using the list command:
