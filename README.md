@@ -4,6 +4,10 @@ A stealthy Python based backdoor that uses Gmail as a command and control server
 
 This project was inspired by the original [PoC code](https://bitbucket.org/Zaeyx/gcat) from Benjamin Donnelly
 
+This project is not maintained anymore and won't be updated
+===========================================================
+Due to reasons out of my control, I've decided to abandon this project. However, there are better versions of the same script out there just a google away.
+
 Setup 
 =====
 For this to work you need:
