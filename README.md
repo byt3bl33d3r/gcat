@@ -1,15 +1,15 @@
-Gcat
-====
+# Gcat
 A stealthy Python based backdoor that uses Gmail as a command and control server
 
 This project was inspired by the original [PoC code](https://bitbucket.org/Zaeyx/gcat) from Benjamin Donnelly
 
-This project is not maintained anymore and won't be updated
-===========================================================
-Due to reasons out of my control, I've decided to abandon this project. However, there are better versions of the same script out there just a google away.
+## This is PoC code...
+... that was released for orginazations to test their defenses against these type of attacks. In order to detect them see projects like [RITA](https://github.com/activecm/rita).
 
-Setup 
-=====
+For a more up to date and maintained version of this project see [GDog](https://github.com/maldevel/gdog)
+
+## Setup 
+
 For this to work you need:
 - A Gmail account (**Use a dedicated account! Do not use your personal one!**)
 - Turn on "Allow less secure apps" under the security settings of the account
@@ -25,8 +25,8 @@ You're probably going to want to compile ```implant.py``` into an executable usi
 
 **Note: It's recommended you compile implant.py using a 32bit Python installation**
 
-Usage
-=====
+# Usage
+
 ```
                                              dP   
                                              88   
@@ -121,8 +121,7 @@ Windows IP Configuration
 
 - That's the gist of it! But you can do much more as you can see from the usage of the script! ;)
 
-To Do
-=====
+# To Do
 
 - Multi-platform support
 - ~~Command to upload files~~
